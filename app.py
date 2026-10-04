@@ -8,7 +8,7 @@ from streamlit_server_state import server_state, server_state_lock
 # Configuración del entorno competitivo
 st.set_page_config(page_title="Lasker Quilmes - Arena Blitz", layout="centered")
 
-# --- ESTILO GRÁFICO OFICIAL DE LICHESS ---
+# --- ESTITO GRÁFICO OFICIAL DE LICHESS ---
 st.markdown("""
 <style>
     .stApp { background-color: #161512 !important; color: #bababa !important; }
@@ -169,7 +169,7 @@ if c_pulsada != "-- Tocar Casilla --":
             orig = st.session_state["origen_blitz"]
             try:
                 movimiento = chess.Move.from_uci(f"{orig}{c_pulsada}")
-                # Auto-coronación escolar
+                # CORRECCIÓN DE LA LÍNEA 174: Coronación a Dama automática al llegar a la última fila
                 if board.piece_at(chess.parse_square(orig)).piece_type == chess.PAWN:
                     if chess.square_rank(chess.parse_square(c_pulsada)) in:
                         movimiento = chess.Move.from_uci(f"{orig}{c_pulsada}q")
