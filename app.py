@@ -7,7 +7,7 @@ from streamlit_server_state import server_state, server_state_lock
 # Configuración del entorno competitivo estilo Lichess Arena
 st.set_page_config(page_title="Lasker Quilmes - Arena Blitz Drag", layout="centered")
 
-# --- INTERFAZ PREMIUM Y LÓGICA DRAG & DROP (CSS/JS INYECTADO) ---
+# --- INTERFAZ PREMIUM (CSS INYECTADO) ---
 st.markdown("""
 <style>
     .stApp { background-color: #161512 !important; color: #bababa !important; }
@@ -30,18 +30,14 @@ st.markdown("""
     }
     .chat-box { background: #161512; padding: 8px; border-radius: 4px; max-height: 120px; overflow-y: auto; border: 1px solid #403e3b; margin-bottom: 8px; font-size: 0.9rem; }
     
-    /* Contenedor del Tablero Táctico Arrastrable */
+    /* Contenedor del Tablero Arrastrable */
     .contenedor-tablero {
-        display: flex; justify-content: center; margin: 15px 0;
-    }
-    .iframe-tablero {
-        border: none; width: 360px; height: 360px; border-radius: 3px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        display: flex; justify-content: center; margin: 15px 0; width: 100%;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- BASE DE DATOS DE USUARIOS ---
+# --- BASE DE DATOS DE USUARIOS (100 ALUMNOS) ---
 USUARIOS_VALIDOS = {"profesor": "lasker2026"}
 for i in range(1, 101): USUARIOS_VALIDOS[f"alumno{i}"] = f"lasker{i:03d}"
 
@@ -60,12 +56,12 @@ if not st.session_state["autenticado"]:
         else: st.error("❌ Credenciales incorrectas.")
     st.stop()
 
-# --- GESTIÓN DE SALAS ---
+# --- GESTIÓN DE SALAS MULTIJUGADOR ---
 st.markdown('<div class="titulo-lichess">⚔️ Arena Blitz Drag: 5+2 ⚔️</div>', unsafe_allow_html=True)
 sala_id = st.text_input("🎮 Código de la Sala:", placeholder="Ej: sala1")
 
 if not sala_id:
-    st.warning("⚠️ Ingresa un código de sala para conectarte.")
+    st.warning("⚠️ Ingresa un código de sala para conectarte con tu compañero.")
     st.stop()
 
 with server_state_lock[sala_id]:
@@ -73,12 +69,12 @@ with server_state_lock[sala_id]:
         server_state[sala_id] = {
             "fen": chess.STARTING_FEN, "blancas": "", "negras": "", "turno": "W",
             "tiempo_blancas": 300.0, "tiempo_negras": 300.0, "last_update": time.time(),
-            "chat": [], "partida_iniciada": False, "move_trigger": 0
+            "chat": [], "partida_iniciada": False
         }
 
 sala = server_state[sala_id]
 
-# Asignación de bandos
+# Asignación de bandos en la sala
 col_b, col_n = st.columns(2)
 with col_b:
     if sala["blancas"] == "":
@@ -100,7 +96,7 @@ if sala["blancas"] and sala["negras"] and not sala["partida_iniciada"]:
         sala["partida_iniciada"] = True
         sala["last_update"] = time.time()
 
-# Relojes
+# Sistema de Control de Relojes
 if sala["partida_iniciada"]:
     now = time.time()
     elapsed = now - sala["last_update"]
@@ -125,18 +121,17 @@ st.markdown(f"""
 if sala["tiempo_blancas"] <= 0: st.error("🏁 ¡Tiempo agotado! Ganan las Negras. 🎉"); st.stop()
 if sala["tiempo_negras"] <= 0: st.error("🏁 ¡Tiempo agotado! Ganan las Blancas. 🎉"); st.stop()
 
-# --- PROCESAR JUGADAS ENVIADAS DESDE EL TABLERO INTERACTIVO ---
+# --- CAPTURA DE JUGADAS DE INTERNET ---
 puedo_mover = False
 if sala["turno"] == "W" and st.session_state["usuario_activo"] == sala["blancas"]: puedo_mover = True
 if sala["turno"] == "B" and st.session_state["usuario_activo"] == sala["negras"]: puedo_mover = True
 
-# Parámetro oculto de Streamlit que recibe la jugada desde el tablero arrastrable
 jugada_recibida = st.query_params.get("move", None)
 if jugada_recibida and puedo_mover:
     board_actual = chess.Board(sala["fen"])
     try:
         movimiento = chess.Move.from_uci(jugada_recibida)
-        # Soporte de promoción automática a Dama
+        # Soporte para promociones automáticas
         if movimiento not in board_actual.legal_moves:
             movimiento_promo = chess.Move.from_uci(f"{jugada_recibida}q")
             if movimiento_promo in board_actual.legal_moves:
@@ -153,14 +148,14 @@ if jugada_recibida and puedo_mover:
                     sala["tiempo_negras"] += 2.0
                     sala["turno"] = "W"
                 sala["last_update"] = time.time()
-                sala["move_trigger"] += 1
             st.query_params.clear()
             st.rerun()
     except:
         pass
 
-# --- INYECCIÓN DEL TABLERO GRÁFICO ARRASTRABLE (LICHESS CLONE) ---
-# Usamos el ecosistema abierto de chessboard.js y chess.js para permitir arrastrar piezas con sonido nativo
+# --- INYECCIÓN COMPLETA DEL TABLERO ARRASTRABLE SIN FALLOS ---
+orientacion_tablero = "black" if st.session_state["usuario_activo"] == sala["negras"] else "white"
+
 html_drag_and_drop = f"""
 <!DOCTYPE html>
 <html>
@@ -170,17 +165,15 @@ html_drag_and_drop = f"""
     <script src="https://cloudflare.com"></script>
     <script src="https://cloudflare.com"></script>
 </head>
-<body style="margin:0; background:#262421; display:flex; justify-content:center;">
-    <div id="myBoard" style="width: 350px;"></div>
-    <audio id="soundToc" src="https://mixkit.co" preload="auto"></audio>
+<body style="margin:0; background:#262421; display:flex; justify-content:center; align-items:center;">
+    <div id="board_lasker" style="width: 340px;"></div>
+    <audio id="audioMove" src="https://mixkit.co" preload="auto"></audio>
     <script>
-        var board = null;
-        var game = new Chess('{sala["fen"]}');
-        var sound = document.getElementById('soundToc');
+        var game = new Chess("{sala['fen']}");
+        var snd = document.getElementById("audioMove");
 
         function onDragStart (source, piece, position, orientation) {{
             if (game.game_over()) return false;
-            // Validar color según el turno oficial
             if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
                 (game.turn() === 'b' && piece.search(/^w/) !== -1)) {{
                 return false;
@@ -188,45 +181,60 @@ html_drag_and_drop = f"""
         }}
 
         function onDrop (source, target) {{
-            // Intentar el movimiento en el validador local de reglas
             var move = game.move({{
                 from: source,
                 to: target,
-                promotion: 'q' // Coronación automática a dama por comodidad blitz
+                promotion: 'q'
             }});
 
-            // ¡Si es ilegal, regresa automáticamente al punto anterior!
             if (move === null) return 'snapback';
             
-            sound.play();
-            // Enviar la jugada a la URL de Streamlit para impactar al rival y actualizar relojes
+            try {{ snd.play(); }} catch(e) {{}}
+            
             var uciMove = source + target;
             window.top.location.href = window.top.location.pathname + "?move=" + uciMove + "&sala=" + "{sala_id}";
         }}
 
         var config = {{
             draggable: true,
-            position: '{sala["fen"]}',
+            position: "{sala['fen']}",
+            orientation: "{orientacion_tablero}",
             onDragStart: onDragStart,
             onDrop: onDrop,
             pieceTheme: 'https://chessboardjs.com{{piece}}.png'
         }};
-        board = Chessboard('myBoard', config);
-        // Voltear el tablero automáticamente si el alumno juega con negras
-        if ('{st.session_state["usuario_activo"]}' === '{sala["negras"]}') {{
-            board.orientation('black');
-        }}
+        Chessboard('board_lasker', config);
     </script>
 </body>
 </html>
 """
 
-# Renderizar el tablero interactivo táctil dentro del contenedor central
 st.markdown('<div class="contenedor-tablero">', unsafe_allow_html=True)
-st.components.v1.html(html_drag_and_drop, height=360, width=360)
+st.components.v1.html(html_drag_and_drop, height=350, width=350)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Botón de reinicio
+# Botón de reinicio de la sala
 if st.button("🔄 Reiniciar Partida en esta Sala"):
     with server_state_lock[sala_id]:
         sala["fen"] = chess.STARTING_FEN
+        sala["turno"] = "W"
+        sala["tiempo_blancas"] = 300.0
+        sala["tiempo_negras"] = 300.0
+        sala["partida_iniciada"] = False
+        sala["blancas"] = ""
+        sala["negras"] = ""
+    st.query_params.clear()
+    st.rerun()
+
+# --- CHAT COMPARTIDO ---
+st.write("---")
+texto_chat = ""
+for m in sala["chat"]: texto_chat += f"<b>{m['user']}:</b> {m['text']}<br>"
+st.markdown(f'<div class="chat-box">{texto_chat if texto_chat else "<i>Chat activo...</i>"}</div>', unsafe_allow_html=True)
+
+n_msg = st.text_input("💬 Mensaje para tu rival:", key="chat_blitz")
+if st.button("Enviar"):
+    if n_msg.strip():
+        with server_state_lock[sala_id]: sala["chat"].append({"user": st.session_state["usuario_activo"], "text": n_msg})
+        st.rerun()
+
