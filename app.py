@@ -3,163 +3,194 @@ import chess
 import chess.svg
 import base64
 
-# Configuración premium del espacio de juego
-st.set_page_config(page_title="ONG Lasker Quilmes - Portal Gamer", layout="centered")
+# Configuración del entorno de juego al estilo Lichess
+st.set_page_config(page_title="ONG Lasker Quilmes - Analizador Lichess", layout="centered")
 
-# --- INTERFAZ ULTRA-ATRAYENTE Y DIVERTIDA (CSS INYECTADO) ---
+# --- IDENTIDAD VISUAL OFICIAL DE LICHESS (CSS INYECTADO) ---
 st.markdown("""
 <style>
-    /* Fondo espacial en movimiento constante */
+    /* Fondo modo oscuro oficial de Lichess (Charcoal #161512) */
     .stApp {
-        background: linear-gradient(-45deg, #0b0f19, #1e1b4b, #431407, #0b0f19);
-        background-size: 400% 400%;
-        animation: gradient 10s ease infinite;
-        color: #f8fafc !important;
-    }
-    @keyframes gradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
+        background-color: #161512 !important;
+        color: #bababa !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Letras Neón estilo Videojuego */
-    .titulo-gamer {
-        color: #00f2fe !important;
-        text-shadow: 0 0 10px #00f2fe, 0 0 30px #00f2fe;
-        text-align: center;
-        font-size: 2.5rem;
-        font-weight: 900 !important;
-        letter-spacing: 1px;
+    /* Contenedor centralizado para emular la interfaz de Lichess */
+    [data-testid="stMainBlockContainer"] {
+        max-width: 500px !important;
+        padding: 20px !important;
+        background: #262421 !important; /* Color de los bloques secundarios en Lichess */
+        border-radius: 4px !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        margin: 20px auto !important;
     }
-    .subtitulo-gamer {
+    
+    /* Títulos limpios sin Neón, estilo sobrio Lichess */
+    .titulo-lichess {
+        color: #fff !important;
         text-align: center;
-        color: #f43f5e;
-        font-weight: bold;
-        text-shadow: 0 0 8px rgba(244, 63, 94, 0.6);
-        font-size: 1.2rem;
+        font-size: 2rem;
+        font-weight: 600 !important;
+        margin-bottom: 5px;
+    }
+    .subtitulo-lichess {
+        text-align: center;
+        color: #bababa;
+        font-size: 1rem;
         margin-bottom: 20px;
     }
     
-    /* Contenedores con luces de neón */
-    .stTextInput, .stButton, div[data-testid="stNotification"] {
-        background: rgba(15, 23, 42, 0.75) !important;
-        border: 2px solid #00f2fe !important;
-        border-radius: 16px !important;
-        box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
-    }
-    
-    /* Botones Interactivos que se agrandan al pasar el mouse */
+    /* Botones de menú planos estilo Lichess */
     .stButton>button {
-        background: linear-gradient(135deg, #f43f5e 0%, #ca8a04 100%) !important;
-        color: #ffffff !important;
-        font-size: 1.1rem !important;
-        font-weight: bold !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 10px 20px !important;
-        transition: all 0.2s ease-in-out !important;
+        background-color: #363431 !important;
+        color: #cccdce !important;
+        border: 1px solid #403e3b !important;
+        border-radius: 4px !important;
+        font-weight: normal !important;
+        transition: background 0.1s ease !important;
+        width: 100%;
     }
     .stButton>button:hover {
-        transform: scale(1.06) rotate(1deg);
-        box-shadow: 0 0 20px #f43f5e;
+        background-color: #454340 !important;
+        color: #fff !important;
+        border-color: #52504c !important;
+    }
+    
+    /* Inputs de texto estilo Lichess */
+    .stTextInput input {
+        background-color: #161512 !important;
+        color: #fff !important;
+        border: 1px solid #403e3b !important;
+        border-radius: 4px !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- GENERADOR AUTOMÁTICO DE 100 USUARIOS GAMER ---
-USUARIOS_VALIDOS = {"profesor": "lasker2026"} 
+# --- REPRODUCTOR DE SONIDO "TOC" NATIVO ---
+def reproducir_sonido_toc():
+    # Audio plano nativo para simular el golpe clásico de Lichess
+    audio_base64 = "UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" 
+    audio_html = f'<audio autoplay src="data:audio/wav;base64,{audio_base64}"></audio>'
+    st.markdown(audio_html, unsafe_allow_html=True)
+
+# --- BASE DE DATOS DE USUARIOS (100 CUENTAS) ---
+USUARIOS_VALIDOS = {"profesor": "lasker2026"}
 for i in range(1, 101):
     USUARIOS_VALIDOS[f"alumno{i}"] = f"lasker{i:03d}"
 
-# --- TEORÍA DE APERTURAS DIVERTIDAS ---
-APERTURAS = {
-    "e2e4 e7e5 g1f3 b8c6 f1b5": "⚔️ ¡APERTURA ESPAÑOLA! Estás usando la estrategia de los campeones del mundo.",
-    "e2e4 c7c5": "⚡ ¡DEFENSA SICILIANA! Alerta de combate táctico. ¡Máxima adrenalina!",
-    "d2d4 d7d5 c2c4": "👑 ¡GAMBITO DE DAMA! Sacrificio inteligente para dominar el mapa.",
-    "e2e4 e7e5 g1f3 d7d6": "🛡️ ¡DEFENSA PHILIDOR! Bloqueo defensivo activado. ¡Inquebrantable!"
-}
-
-# --- PANTALLA DE LOGUEO DE ALUMNOS ---
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-
+# --- CONTROL DE ACCESO (LOGIN) ---
+if "autenticado" not in st.session_state: st.session_state["autenticado"] = False
 if not st.session_state["autenticado"]:
-    st.markdown('<div class="titulo-gamer">🎮 LASKER QUILMES</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitulo-gamer">⚡ Batalla de Mentes - Modo Estudio ⚡</div>', unsafe_allow_html=True)
-    
-    # Icono animado de corona de rey
-    st.markdown('<div style="text-align:center; margin-bottom:15px;"><img src="https://icons8.com" width="85" style="filter:drop-shadow(0 0 15px #f43f5e);"/></div>', unsafe_allow_html=True)
-    
-    usuario = st.text_input("👤 TU USUARIO DE ALUMNO (Ej: alumno1):")
-    clave = st.text_input("🔑 TU CLAVE SECRETA:", type="password")
-    
-    if st.button("🚀 ENTRAR AL SIMULADOR"):
+    st.markdown('<div class="titulo-lichess">lichess.org — Lasker</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitulo-lichess">Iniciar sesión en la Academia Quilmes</div>', unsafe_allow_html=True)
+    usuario = st.text_input("Usuario o correo electrónico:")
+    clave = st.text_input("Contraseña:", type="password")
+    if st.button("Iniciar sesión"):
         if usuario in USUARIOS_VALIDOS and USUARIOS_VALIDOS[usuario] == clave:
             st.session_state["autenticado"] = True
             st.rerun()
-        else:
-            st.error("❌ Código erróneo. ¡Pídele tus coordenadas de acceso al profesor!")
+        else: st.error("❌ Credenciales incorrectas.")
     st.stop()
 
-# --- INTERFAZ DEL TABLERO DE JUEGO ACTIVADO ---
-st.markdown('<div class="titulo-gamer">🧠 MODO ENTRENAMIENTO</div>', unsafe_allow_html=True)
-st.markdown('<p style="text-align:center; color:#00f2fe; font-weight:bold;">📍 Academia Virtual ONG Lasker</p>', unsafe_allow_html=True)
+# --- INICIALIZACIÓN DEL SISTEMA DE JUEGO ---
+if "board" not in st.session_state: st.session_state.board = chess.Board()
+if "casilla_seleccionada" not in st.session_state: st.session_state.casilla_seleccionada = None
 
-if "board" not in st.session_state:
-    st.session_state.board = chess.Board()
-if "historial_movimientos" not in st.session_state:
-    st.session_state.historial_movimientos = []
+# --- MENÚ DE ENTRENAMIENTO ESTILO LICHESS ---
+st.markdown('<div class="titulo-lichess">Estudio Lasker Quilmes</div>', unsafe_allow_html=True)
+st.write("---")
 
-if st.button("🔄 REINICIAR MAPA DE JUEGO"):
+col1, col2, col3 = st.columns(3)
+with col1:
+    if st.button("📖 Aperturas"):
+        st.session_state.board = chess.Board("r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")
+        st.session_state.casilla_seleccionada = None
+        st.success("Apertura Española")
+with col2:
+    if st.button("🏰 Finales"):
+        st.session_state.board = chess.Board("8/8/4k3/8/8/4K3/4R3/4R3 w - - 0 1")
+        st.session_state.casilla_seleccionada = None
+        st.success("Final de Torres")
+with col3:
+    if st.button("🎯 Tácticas"):
+        st.session_state.board = chess.Board("6k1/5ppp/8/8/8/8/5PPP/6K1 w - - 0 1")
+        st.session_state.casilla_seleccionada = None
+        st.success("Mate del Pasillo")
+
+if st.button("🔄 Reiniciar posición"):
     st.session_state.board = chess.Board()
-    st.session_state.historial_movimientos = []
+    st.session_state.casilla_seleccionada = None
     st.rerun()
 
-# Lógica del detector de estrategia
-historial_str = " ".join(st.session_state.historial_movimientos)
-apertura_detectada = "🪐 Campo de batalla libre. ¡Crea una estrategia única!"
-for jugadas, nombre_apertura in APERTURAS.items():
-    if historial_str.startswith(jugadas):
-        apertura_detectada = nombre_apertura
+# --- LÓGICA DE MOVIMIENTO POR SELECCIÓN DE CASILLAS ---
+st.write("---")
+st.caption("Seleccioná la pieza de origen y luego elegí la casilla de destino para mover.")
 
-st.info(f"{apertura_detectada}")
+movimientos_posibles = []
+if st.session_state.casilla_seleccionada:
+    sq_origen = chess.parse_square(st.session_state.casilla_seleccionada)
+    for move in st.session_state.board.legal_moves:
+        if move.from_square == sq_origen:
+            movimientos_posibles.append(move)
 
-# Renderizar tablero neón (Azul Eléctrico y Blanco Puro)
+# Círculos verdes semitransparentes en los destinos válidos (igual que en Lichess)
+flechas_movimiento = []
+if st.session_state.casilla_seleccionada:
+    for move in movimientos_posibles:
+        flechas_movimiento.append(chess.svg.Arrow(move.to_square, move.to_square, color="rgba(120, 180, 80, 0.7)"))
+
+# Renderizar Tablero con la paleta de colores oficial de Lichess (Azul de Lichess o café opcional)
 board_svg = chess.svg.board(
-    board=st.session_state.board, 
-    size=420,
-    colors={'square light': '#ffffff', 'square dark': '#1d4ed8', 'margin': '#0b0f19'}
+    board=st.session_state.board,
+    size=380,
+    arrows=flechas_movimiento,
+    colors={'square light': '#dee3e6', 'square dark': '#8ca2ad', 'margin': '#161512'}
 )
 b64 = base64.b64encode(board_svg.encode('utf-8')).decode('utf-8')
-html_tablero = f'<div style="display: flex; justify-content: center; margin: 15px 0;"><img src="data:image/svg+xml;base64,{b64}" style="border: 4px solid #f43f5e; border-radius: 12px; box-shadow: 0 0 30px rgba(244,63,94,0.6); transform: rotate(0deg);"/></div>'
+html_tablero = f'<div style="display: flex; justify-content: center; margin: 10px 0;"><img src="data:image/svg+xml;base64,{b64}" style="border-radius: 3px; width: 100%; max-width: 360px;"/></div>'
 st.markdown(html_tablero, unsafe_allow_html=True)
 
-# Barra de energía simulada
-st.write("🔋 **Poder de cálculo del motor:**")
-st.progress(100)
+# --- SELECTORES DE CLIC INTERACTIVOS ---
+col_origen, col_destino = st.columns(2)
 
-# Entrada de comandos
-movimiento_usuario = st.text_input("🎯 Tu movimiento rápido (Ej: e4, Nf3, d5):", key="move_input", placeholder="Escribe aquí y presiona Enter...")
-
-if movimiento_usuario:
-    try:
-        move = st.session_state.board.parse_san(movimiento_usuario)
-        st.session_state.board.push(move)
-        st.session_state.historial_movimientos.append(move.uci())
+with col_origen:
+    opciones_origen = ["-- Elegir Pieza --"] + [chess.square_name(s) for s in chess.SQUARES if st.session_state.board.piece_at(s) is not None]
+    seleccion_origen = st.selectbox("Pieza:", opciones_origen, index=0)
+    
+    if seleccion_origen != "-- Elegir Pieza --" and seleccion_origen != st.session_state.casilla_seleccionada:
+        st.session_state.casilla_seleccionada = seleccion_origen
         st.rerun()
-    except ValueError:
-        st.error("⚠️ ¡Movimiento inválido! El sistema no reconoce esa jugada. ¡Revisa tu estrategia!")
 
-# Mentor Gamer Integrado
-st.subheader("🤖 Consejos de tu Coach de Inteligencia Artificial")
-if not st.session_state.board.is_game_over():
-    if st.session_state.historial_movimientos:
-        ultima_jugada = st.session_state.historial_movimientos[-1]
-        if "e4" in ultima_jugada or "d4" in ultima_jugada:
-            st.success("🏆 **¡Nivel Pro!** Has conquistado el centro del tablero. Tus piezas obtienen bonificación de espacio.")
-        elif "f3" in ultima_jugada or "c3" in ultima_jugada:
-            st.success("🐴 **¡Despliegue Táctico!** Tus caballos saltan a la acción para proteger al rey. ¡Buen trabajo!")
-        else:
-            st.warning("🔮 **Evolución Posicional:** Estás armando una red silenciosa. ¡Analiza bien el contraataque del oponente!")
+with col_destino:
+    opciones_destino = ["-- Elegir Destino --"]
+    if st.session_state.casilla_seleccionada:
+        opciones_destino += [chess.square_name(m.to_square) for m in movimientos_posibles]
+        
+    seleccion_destino = st.selectbox("Destino:", opciones_destino, index=0)
+
+    if seleccion_destino != "-- Elegir Destino --" and st.session_state.casilla_seleccionada:
+        try:
+            jugada_uci = f"{st.session_state.casilla_seleccionada}{seleccion_destino}"
+            movimiento_final = chess.Move.from_uci(jugada_uci)
+            
+            # Promoción automática a Dama
+            if st.session_state.board.piece_at(chess.parse_square(st.session_state.casilla_seleccionada)).piece_type == chess.PAWN:
+                if chess.square_rank(chess.parse_square(seleccion_destino)) in [0, 7]:
+                    movimiento_final = chess.Move.from_uci(f"{jugada_uci}q")
+
+            if movimiento_final in st.session_state.board.legal_moves:
+                st.session_state.board.push(movimiento_final)
+                reproducir_sonido_toc()
+                st.session_state.casilla_seleccionada = None
+                st.rerun()
+        except Exception:
+            pass
+
+# --- PANEL DE EVALUACIÓN DEL MOTOR ---
+st.write("---")
+st.subheader("Análisis en tiempo real")
+if st.session_state.casilla_seleccionada:
+    st.info(f"Foco en {st.session_state.casilla_seleccionada.upper()}. Los círculos verdes indican movimientos legales.")
 else:
-    st.error("🏁 **¡PARTIDA FINALIZADA!** Lograron el objetivo. Analicen los movimientos clave antes de iniciar otra partida.")
+    st.success("Seleccioná una pieza para ver su análisis posicional.")
