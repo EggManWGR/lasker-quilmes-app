@@ -1,236 +1,250 @@
 import streamlit as st
 import chess
-import base64
 import time
-from streamlit_server_state import server_state, server_state_lock
 
-# Configuración del entorno competitivo oficial estilo Lichess
-st.set_page_config(page_title="Lasker Quilmes - Arena Blitz Drag", layout="centered")
+# -----------------------------------------------------------------------------
+# 1. CONFIGURACIÓN Y AUTENTICACIÓN
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="Lasker Quilmes Chess", layout="wide", page_icon="♟️")
 
-# --- IDENTIDAD VISUAL OFICIAL DE LICHESS (CSS INYECTADO) ---
-st.markdown("""
-<style>
-    .stApp { background-color: #161512 !important; color: #bababa !important; }
-    [data-testid="stMainBlockContainer"] {
-        max-width: 500px !important; padding: 20px !important;
-        background: #262421 !important; border-radius: 4px !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5); margin: 15px auto !important;
-    }
-    .titulo-lichess { color: #fff !important; text-align: center; font-size: 1.8rem; font-weight: 600 !important; }
-    .reloj-contenedor { display: flex; justify-content: space-between; margin: 10px 0; }
-    .reloj-caja {
-        background: #161512; padding: 10px 20px; border-radius: 3px;
-        font-family: monospace; font-size: 1.6rem; font-weight: bold; border: 1px solid #403e3b;
-    }
-    .reloj-activo { color: #fff !important; border-color: #78b450 !important; background: #1e2c18 !important; }
-    .reloj-inactivo { color: #8a8a8a; }
-    .stButton>button {
-        background-color: #363431 !important; color: #fff !important;
-        border: 1px solid #403e3b !important; border-radius: 4px !important; width: 100%;
-    }
-    .chat-box { background: #161512; padding: 8px; border-radius: 4px; max-height: 120px; overflow-y: auto; border: 1px solid #403e3b; margin-bottom: 8px; font-size: 0.9rem; }
-    .contenedor-tablero { display: flex; justify-content: center; margin: 15px 0; width: 100%; }
-</style>
-""", unsafe_allow_html=True)
+# Generar credenciales de alumno1 a alumno100
+USERS = {f"alumno{i}": f"lasker{i}" for i in range(1, 101)}
 
-# --- BASE DE DATOS DE USUARIOS (100 ALUMNOS) ---
-USUARIOS_VALIDOS = {"profesor": "lasker2026"}
-for i in range(1, 101): USUARIOS_VALIDOS[f"alumno{i}"] = f"lasker{i:03d}"
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-if "autenticado" not in st.session_state: st.session_state["autenticado"] = False
-if "usuario_activo" not in st.session_state: st.session_state["usuario_activo"] = ""
-
-if not st.session_state["autenticado"]:
-    st.markdown('<div class="titulo-lichess">lichess.org — Lasker Arena</div>', unsafe_allow_html=True)
-    u = st.text_input("👤 Usuario:")
-    c = st.text_input("🔑 Contraseña:", type="password")
-    if st.button("Iniciar Sesión"):
-        if u in USUARIOS_VALIDOS and USUARIOS_VALIDOS[u] == c:
-            st.session_state["autenticado"] = True
-            st.session_state["usuario_activo"] = u.upper()
-            st.rerun()
-        else: st.error("❌ Credenciales incorrectas.")
+if st.session_state.user is None:
+    st.title("♟️ Lasker Quilmes Chess - Iniciar Sesión")
+    col1, col2 = st.columns(2)
+    with col1:
+        username = st.text_input("Usuario (ej. alumno1):")
+        password = st.text_input("Contraseña:", type="password")
+        if st.button("Ingresar"):
+            if username in USERS and USERS[username] == password:
+                st.session_state.user = username
+                st.success(f"¡Bienvenido, {username}!")
+                st.rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos.")
     st.stop()
 
-# --- GESTIÓN DE SALAS MULTIJUGADOR ---
-st.markdown('<div class="titulo-lichess">⚔️ Arena Blitz Drag: 5+2 ⚔️</div>', unsafe_allow_html=True)
-sala_id = st.text_input("🎮 Código de la Sala:", placeholder="Ej: sala1")
+# -----------------------------------------------------------------------------
+# 2. GESTIÓN DE SALAS Y ESTADO GLOBAL DE PARTIDAS
+# -----------------------------------------------------------------------------
+if "games" not in st.session_state:
+    # Estructura: room_id -> { fen, white, black, moves, is_private }
+    st.session_state.games = {}
 
-if not sala_id:
-    st.warning("⚠️ Ingresa un código de sala para conectarte con tu compañero.")
+st.sidebar.title(f"👤 {st.session_state.user}")
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state.user = None
+    st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.header("🚪 Salas de Juego")
+
+# Crear Nueva Sala
+with st.sidebar.expander("➕ Crear Nueva Sala"):
+    new_room_id = st.text_input("Nombre de la Sala:", key="new_room").strip()
+    is_private = st.checkbox("Sala Privada")
+    color_pref = st.selectbox("Jugar con:", ["Blancas", "Negras", "Aleatorio"])
+    if st.button("Crear Sala"):
+        if not new_room_id:
+            st.warning("Escribe un nombre para la sala.")
+        elif new_room_id in st.session_state.games:
+            st.error("Esa sala ya existe.")
+        else:
+            white_player = st.session_state.user if color_pref != "Negras" else None
+            black_player = st.session_state.user if color_pref == "Negras" else None
+            st.session_state.games[new_room_id] = {
+                "fen": chess.STARTING_FEN,
+                "white": white_player,
+                "black": black_player,
+                "moves": [],
+                "is_private": is_private,
+                "last_update": time.time()
+            }
+            st.session_state.current_room = new_room_id
+            st.rerun()
+
+# Unirse a Sala Privada por Código
+with st.sidebar.expander("🔑 Unirse por Código"):
+    join_code = st.text_input("Código de Sala Privada:").strip()
+    if st.button("Entrar a Sala Privada"):
+        if join_code in st.session_state.games:
+            st.session_state.current_room = join_code
+            st.rerun()
+        else:
+            st.error("Sala no encontrada.")
+
+# Lista de Salas Públicas
+st.sidebar.subheader("🌐 Salas Públicas")
+public_rooms = [r for r, data in st.session_state.games.items() if not data.get("is_private")]
+
+if public_rooms:
+    for r_id in public_rooms:
+        game_data = st.session_state.games[r_id]
+        status = f"({game_data['white'] or 'Libre'} vs {game_data['black'] or 'Libre'})"
+        if st.sidebar.button(f"Unirse: {r_id} {status}", key=f"btn_{r_id}"):
+            st.session_state.current_room = r_id
+            st.rerun()
+else:
+    st.sidebar.caption("No hay salas públicas abiertas.")
+
+# -----------------------------------------------------------------------------
+# 3. INTERFAZ PRINCIPAL DE JUEGO
+# -----------------------------------------------------------------------------
+if "current_room" not in st.session_state or st.session_state.current_room not in st.session_state.games:
+    st.title("♟️ Lasker Quilmes Chess")
+    st.info("Selecciona o crea una sala en la barra lateral para empezar a jugar.")
     st.stop()
 
-with server_state_lock[sala_id]:
-    if sala_id not in server_state:
-        server_state[sala_id] = {
-            "fen": chess.STARTING_FEN, "blancas": "", "negras": "", "turno": "W",
-            "tiempo_blancas": 300.0, "tiempo_negras": 300.0, "last_update": time.time(),
-            "chat": [], "partida_iniciada": False
-        }
+room_id = st.session_state.current_room
+game = st.session_state.games[room_id]
+board = chess.Board(game["fen"])
 
-sala = server_state[sala_id]
+# Asignación automática de asientos
+current_user = st.session_state.user
+if game["white"] is None and game["black"] != current_user:
+    game["white"] = current_user
+elif game["black"] is None and game["white"] != current_user:
+    game["black"] = current_user
 
-# Asignación de bandos
-col_b, col_n = st.columns(2)
-with col_b:
-    if sala["blancas"] == "":
-        if st.button("⬜ Jugar con Blancas"):
-            with server_state_lock[sala_id]: sala["blancas"] = st.session_state["usuario_activo"]
-            st.rerun()
-    else: st.write(f"⬜ Blancas: **{sala['blancas']}**")
-with col_n:
-    if sala["negras"] == "":
-        if st.button("⬛ Jugar con Negras"):
-            with server_state_lock[sala_id]:
-                if sala["blancas"] != st.session_state["usuario_activo"]:
-                    sala["negras"] = st.session_state["usuario_activo"]
-            st.rerun()
-    else: st.write(f"⬛ Negras: **{sala['negras']}**")
-
-if sala["blancas"] and sala["negras"] and not sala["partida_iniciada"]:
-    with server_state_lock[sala_id]:
-        sala["partida_iniciada"] = True
-        sala["last_update"] = time.time()
-
-# Sistema de Control de Relojes
-if sala["partida_iniciada"]:
-    now = time.time()
-    elapsed = now - sala["last_update"]
-    with server_state_lock[sala_id]:
-        sala["last_update"] = now
-        if sala["turno"] == "W": sala["tiempo_blancas"] = max(0.0, sala["tiempo_blancas"] - elapsed)
-        else: sala["tiempo_negras"] = max(0.0, sala["tiempo_negras"] - elapsed)
-
-def formatear_tiempo(t):
-    return f"{int(t // 60):02d}:{int(t % 60):02d}"
-
-cl_b_css = "reloj-activo" if sala["turno"] == "W" else "reloj-inactivo"
-cl_n_css = "reloj-activo" if sala["turno"] == "B" else "reloj-inactivo"
-
-st.markdown(f"""
-<div class="reloj-contenedor">
-    <div class="reloj-caja {cl_b_css}">⬜ BLANCAS: {formatear_tiempo(sala['tiempo_blancas'])}</div>
-    <div class="reloj-caja {cl_n_css}">⬛ NEGRAS: {formatear_tiempo(sala['tiempo_negras'])}</div>
-</div>
-""", unsafe_allow_html=True)
-
-if sala["tiempo_blancas"] <= 0: st.error("🏁 ¡Tiempo agotado! Ganan las Negras. 🎉"); st.stop()
-if sala["tiempo_negras"] <= 0: st.error("🏁 ¡Tiempo agotado! Ganan las Blancas. 🎉"); st.stop()
-
-# --- PROCESADOR DE MOVIMIENTOS SEGURO ---
-puedo_mover = False
-if sala["turno"] == "W" and st.session_state["usuario_activo"] == sala["blancas"]: puedo_mover = True
-if sala["turno"] == "B" and st.session_state["usuario_activo"] == sala["negras"]: puedo_mover = True
-
-jugada_recibida = st.query_params.get("move", None)
-if jugada_recibida and puedo_mover:
-    board_actual = chess.Board(sala["fen"])
+# Procesar movimientos enviados desde la interfaz
+query_params = st.query_params
+if "move" in query_params:
+    move_san_or_uci = query_params["move"]
     try:
-        movimiento = chess.Move.from_uci(jugada_recibida)
-        
-        # Validación de coronación automática limpia sin el fragmento "in:" roto
-        if movimiento not in board_actual.legal_moves:
-            movimiento_promo = chess.Move.from_uci(f"{jugada_recibida}q")
-            if movimiento_promo in board_actual.legal_moves:
-                movimiento = movimiento_promo
-
-        if movimiento in board_actual.legal_moves:
-            board_actual.push(movimiento)
-            with server_state_lock[sala_id]:
-                sala["fen"] = board_actual.fen()
-                if sala["turno"] == "W":
-                    sala["tiempo_blancas"] += 2.0
-                    sala["turno"] = "B"
-                else:
-                    sala["tiempo_negras"] += 2.0
-                    sala["turno"] = "W"
-                sala["last_update"] = time.time()
-            st.query_params.clear()
-            st.rerun()
-    except:
+        move = board.parse_san(move_san_or_uci) if move_san_or_uci in [board.san(m) for m in board.legal_moves] else chess.Move.from_uci(move_san_or_uci)
+        if move in board.legal_moves:
+            # Verificar turno de jugador
+            is_white_turn = board.turn == chess.WHITE
+            if (is_white_turn and current_user == game["white"]) or (not is_white_turn and current_user == game["black"]):
+                board.push(move)
+                game["fen"] = board.fen()
+                game["moves"].append(move.uci())
+                game["last_update"] = time.time()
+    except Exception:
         pass
-
-# --- INYECCIÓN COMPLETA DEL TABLERO ARRASTRABLE SIN CRASH ---
-orientacion_tablero = "black" if st.session_state["usuario_activo"] == sala["negras"] else "white"
-
-html_drag_and_drop = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <link rel="stylesheet" href="https://cloudflare.com">
-    <script src="https://jquery.com"></script>
-    <script src="https://cloudflare.com"></script>
-    <script src="https://cloudflare.com"></script>
-</head>
-<body style="margin:0; background:#262421; display:flex; justify-content:center; align-items:center;">
-    <div id="board_lasker" style="width: 340px;"></div>
-    <audio id="audioMove" src="https://mixkit.co" preload="auto"></audio>
-    <script>
-        var game = new Chess("{sala['fen']}");
-        var snd = document.getElementById("audioMove");
-
-        function onDragStart (source, piece, position, orientation) {{
-            if (game.game_over()) return false;
-            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
-                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {{
-                return false;
-            }}
-        }}
-
-        function onDrop (source, target) {{
-            var move = game.move({{
-                from: source,
-                to: target,
-                promotion: 'q'
-            }});
-
-            if (move === null) return 'snapback';
-            
-            try {{ snd.play(); }} catch(e) {{}}
-            
-            var uciMove = source + target;
-            var targetUrl = window.top.location.origin + window.top.location.pathname + "?move=" + uciMove + "&sala=" + "{sala_id}";
-            window.top.location.href = targetUrl;
-        }}
-
-        var config = {{
-            draggable: true,
-            position: "{sala['fen']}",
-            orientation: "{orientacion_tablero}",
-            onDragStart: onDragStart,
-            onDrop: onDrop,
-            pieceTheme: 'https://chessboardjs.com{{piece}}.png'
-        }};
-        Chessboard('board_lasker', config);
-    </script>
-</body>
-</html>
-"""
-
-st.markdown('<div class="contenedor-tablero">', unsafe_allow_html=True)
-st.components.v1.html(html_drag_and_drop, height=350, width=350)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Botón de reinicio de la sala
-if st.button("🔄 Reiniciar Partida en esta Sala"):
-    with server_state_lock[sala_id]:
-        sala["fen"] = chess.STARTING_FEN
-        sala["turno"] = "W"
-        sala["tiempo_blancas"] = 300.0
-        sala["tiempo_negras"] = 300.0
-        sala["partida_iniciada"] = False
-        sala["blancas"] = ""
-        sala["negras"] = ""
     st.query_params.clear()
     st.rerun()
 
-# --- CHAT COMPARTIDO ---
-st.write("---")
-texto_chat = ""
-for m in sala["chat"]: texto_chat += f"<b>{m['user']}:</b> {m['text']}<br>"
-st.markdown(f'<div class="chat-box">{texto_chat if texto_chat else "<i>Chat activo...</i>"}</div>', unsafe_allow_html=True)
+# -----------------------------------------------------------------------------
+# 4. DISPOSICIÓN ESTILO LICHESS
+# -----------------------------------------------------------------------------
+col_left, col_board, col_right = st.columns([1, 2, 1])
 
-n_msg = st.text_input("💬 Mensaje para tu rival:", key="chat_blitz")
-if st.button("Enviar"):
-    if n_msg.strip():
-        with server_state_lock[sala_id]: sala["chat"].append({"user": st.session_state["usuario_activo"], "text": n_msg})
+with col_left:
+    st.markdown(f"### Sala: `{room_id}`")
+    st.write(f"⚪ **Blancas:** {game['white'] or 'Esperando...'}")
+    st.write(f"⚫ **Negras:** {game['black'] or 'Esperando...'}")
+    st.markdown("---")
+    
+    # Determinación de orientación del tablero
+    orientation = "white"
+    if current_user == game["black"]:
+        orientation = "black"
+    
+    st.caption(f"Jugando como: **{current_user}**")
+    if st.button("🔄 Actualizar Tablero"):
+        st.rerun()
+
+# Componente HTML con Chessboard.js + Chess.js estilo Lichess
+with col_board:
+    fen = board.fen()
+    
+    # Determinar si el usuario actual tiene el turno
+    is_my_turn = False
+    if board.turn == chess.WHITE and current_user == game["white"]:
+        is_my_turn = True
+    elif board.turn == chess.BLACK and current_user == game["black"]:
+        is_my_turn = True
+
+    chessboard_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+        <script src="https://code.jquery.com/jquery-3.5.1.min.min.js"></script>
+        <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+        <style>
+            body {{ background-color: #161512; color: #bababa; font-family: sans-serif; display: flex; justify-content: center; margin: 0; }}
+            #board {{ width: 450px; margin-top: 10px; }}
+            .highlight {{ background-color: #a9a9a9 !important; }}
+        </style>
+    </head>
+    <body>
+        <div id="board"></div>
+
+        <script>
+            var board = null;
+            var game = new Chess('{fen}');
+            var canMove = { 'true' if is_my_turn else 'false' };
+
+            function onDragStart (source, piece, position, orientation) {{
+                if (game.game_over() || !canMove) return false;
+                if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                    (game.turn() === 'b' && piece.search(/^w/) !== -1)) {{
+                    return false;
+                }}
+            }}
+
+            function onDrop (source, target) {{
+                var move = game.move({{
+                    from: source,
+                    to: target,
+                    promotion: 'q' // Promoción por defecto a Dama segun FIDE básica
+                }});
+
+                if (move === null) return 'snapback';
+
+                // Enviar el movimiento a Streamlit
+                window.parent.location.href = window.parent.location.pathname + '?move=' + move.from + move.to + (move.promotion ? move.promotion : '');
+            }}
+
+            function onSnapEnd () {{
+                board.position(game.fen());
+            }}
+
+            var config = {{
+                draggable: true,
+                position: '{fen}',
+                orientation: '{orientation}',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{{piece}}.png'
+            }};
+            board = Chessboard('board', config);
+        </script>
+    </body>
+    </html>
+    """
+    
+    st.components.v1.html(chessboard_html, height=500)
+
+with col_right:
+    st.subheader("📊 Estado de la Partida")
+    if board.is_checkmate():
+        st.error("¡Jaque Mate!")
+    elif board.is_stalemate():
+        st.warning("Tablas por Ahogado.")
+    elif board.is_check():
+        st.warning("⚠️ ¡Jaque!")
+    else:
+        turn_text = "Blancas" if board.turn == chess.WHITE else "Negras"
+        st.info(f"Turno de las **{turn_text}**")
+
+    st.markdown("---")
+    st.subheader("📜 Historial de Jugadas")
+    moves_list = game["moves"]
+    if moves_list:
+        formatted_moves = []
+        for i in range(0, len(moves_list), 2):
+            w_move = moves_list[i]
+            b_move = moves_list[i+1] if i+1 < len(moves_list) else ""
+            formatted_moves.append(f"{i//2 + 1}. {w_move} {b_move}")
+        st.text_area("Movimientos", "\n".join(formatted_moves), height=200)
+    else:
+        st.caption("Aún no se realizaron movimientos.")
