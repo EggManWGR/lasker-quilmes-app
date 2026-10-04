@@ -5,10 +5,10 @@ import base64
 import time
 from streamlit_server_state import server_state, server_state_lock
 
-# Configuración del entorno competitivo
+# Configuración del entorno competitivo estilo Lichess
 st.set_page_config(page_title="Lasker Quilmes - Arena Blitz", layout="centered")
 
-# --- ESTITO GRÁFICO OFICIAL DE LICHESS ---
+# --- ESTILO GRÁFICO OFICIAL DE LICHESS (CSS INYECTADO) ---
 st.markdown("""
 <style>
     .stApp { background-color: #161512 !important; color: #bababa !important; }
@@ -113,7 +113,7 @@ if sala["blancas"] and sala["negras"] and not sala["partida_iniciada"]:
         sala["partida_iniciada"] = True
         sala["last_update"] = time.time()
 
-# --- ACTUALIZACIÓN DE RELOJES EN TIEMPO REAL (LÓGICA BLITZ 5+2) ---
+# --- ACTUALIZACIÓN DE RELOJES EN TIEMPO REAL ---
 if sala["partida_iniciada"]:
     now = time.time()
     elapsed = now - sala["last_update"]
@@ -151,7 +151,7 @@ board = chess.Board(sala["fen"])
 coordenadas = [chess.square_name(s) for s in chess.SQUARES]
 c_pulsada = st.selectbox("📍 Selecciona tu movimiento (Origen / Destino):", ["-- Tocar Casilla --"] + coordenadas)
 
-# Validar que el jugador solo mueva en su propio turno
+# Validar turno del jugador
 puedo_mover = False
 if sala["turno"] == "W" and st.session_state["usuario_activo"] == sala["blancas"]: puedo_mover = True
 if sala["turno"] == "B" and st.session_state["usuario_activo"] == sala["negras"]: puedo_mover = True
@@ -168,11 +168,14 @@ if c_pulsada != "-- Tocar Casilla --":
         else:
             orig = st.session_state["origen_blitz"]
             try:
+                # Comprobamos jugada normal
                 movimiento = chess.Move.from_uci(f"{orig}{c_pulsada}")
-                # CORRECCIÓN DE LA LÍNEA 174: Coronación a Dama automática al llegar a la última fila
-                if board.piece_at(chess.parse_square(orig)).piece_type == chess.PAWN:
-                    if chess.square_rank(chess.parse_square(c_pulsada)) in:
-                        movimiento = chess.Move.from_uci(f"{orig}{c_pulsada}q")
+                
+                # Si el movimiento no es válido directo, probamos si es una promoción a Dama válida
+                if movimiento not in board.legal_moves:
+                    movimiento_promo = chess.Move.from_uci(f"{orig}{c_pulsada}q")
+                    if movimiento_promo in board.legal_moves:
+                        movimiento = movimiento_promo
                 
                 if movimiento in board.legal_moves:
                     board.push(movimiento)
@@ -180,7 +183,6 @@ if c_pulsada != "-- Tocar Casilla --":
                     
                     with server_state_lock[sala_id]:
                         sala["fen"] = board.fen()
-                        # Aplicar incremento oficial Lichess (+2 segundos) e invertir turno
                         if sala["turno"] == "W":
                             sala["tiempo_blancas"] += 2.0
                             sala["turno"] = "B"
@@ -228,6 +230,7 @@ if st.button("Enviar"):
             sala["chat"].append({"user": st.session_state["usuario_activo"], "text": n_msg})
         st.rerun()
 
-# Auto-refresco de pantalla para sincronizar los relojes cada segundo
+# Auto-refresco de pantalla cada segundo para sincronizar los relojes
 time.sleep(1.0)
 st.rerun()
+
